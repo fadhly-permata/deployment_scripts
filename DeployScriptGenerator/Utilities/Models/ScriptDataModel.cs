@@ -25,14 +25,16 @@ internal partial class Program
                 ScriptType.Constraint => "ALTTBL",
                 ScriptType.Index => "CRIDX",
                 ScriptType.Trigger => "CRTGR",
-                ScriptType.Function => "CTFUN",
-                ScriptType.View => "CRTBVW",
+                ScriptType.Function => "CRFUN",
+                ScriptType.View => "CRTBLVW",
                 _ => throw new ArgumentOutOfRangeException(nameof(Type), Type, null)
             };
 
         internal required string Database { get; set; }
         internal required string Schema { get; set; }
         internal required string ObjectName { get; set; }
+
+        internal int ParameterCount { get; set; } = 0;
 
         internal required ConfigurationModel ConfigJson { get; set; }
     }

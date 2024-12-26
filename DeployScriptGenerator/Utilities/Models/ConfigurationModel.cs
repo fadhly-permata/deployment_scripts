@@ -23,6 +23,9 @@ internal class ConfigurationModel
     ]
     public required string OutputDirectory { get; set; }
 
+    [JsonProperty("cleanup_directory_first", DefaultValueHandling = DefaultValueHandling.Ignore)]
+    public bool CleanupDirectoryFirst { get; set; } = false;
+
     [
         JsonProperty("ticket_number"),
         Required(
