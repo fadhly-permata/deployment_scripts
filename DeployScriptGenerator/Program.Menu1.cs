@@ -1,3 +1,5 @@
+using DeployScriptGenerator.Utilities.Constants;
+using DeployScriptGenerator.Utilities.Extensions.Strings;
 using DeployScriptGenerator.Utilities.Models;
 using Newtonsoft.Json;
 
@@ -9,15 +11,14 @@ internal partial class Program
     {
         restart_process:
 
-        Console.WriteLine("Please specify the path of the sample json configuration file.");
-        var userResponse = Console.ReadLine();
+        ConstMessages.SMPL_CFG_ASK_PATH.WriteLine();
+        string? userResponse = Console.ReadLine();
 
         if (string.IsNullOrWhiteSpace(userResponse))
         {
-            Console.WriteLine("Path can not be empty.");
-            Console.WriteLine(
-                "Press <r> to try again or press any other key to go back to the main menu?"
-            );
+            ConstMessages.SMPL_CFG_PATH_CANNOT_EMPTY.WriteLine();
+            ConstMessages.SMPL_CFG_RETRY_OR_MAIN_MENU.WriteLine();
+
             if (Console.ReadLine()?.ToLower() == "r")
                 goto restart_process;
             else
@@ -26,10 +27,9 @@ internal partial class Program
 
         if (Directory.Exists(Path.GetDirectoryName(userResponse)) == false)
         {
-            Console.WriteLine("Directory does not exist. Please try again.");
-            Console.WriteLine(
-                "Press <r> to try again or press any other key to go back to the main menu?"
-            );
+            ConstMessages.SMPL_CFG_DIR_NOT_FOUND.WriteLine();
+            ConstMessages.SMPL_CFG_RETRY_OR_MAIN_MENU.WriteLine();
+
             if (Console.ReadLine()?.ToLower() == "r")
                 goto restart_process;
             else
@@ -44,7 +44,7 @@ internal partial class Program
                     value: new ConfigurationModel
                     {
                         ConnectionString =
-                            "Server=127.0.0.1;Port=5432;Database=idc.en;User Id=postgres;Password=postgres;",
+                            "User ID=idc_fadhly;HOST=localhost;Port=5432;Database=idc.kaml;Integrated Security=true;Pooling=true;MinPoolSize=1;MaxPoolSize=1000;",
                         OutputDirectory =
                             "/media/fadhly/Data/-Repo/deployment_scripts/DeployScriptGenerator/Data/sampah/sample_output",
                         TicketNumber = "T123456",
@@ -100,8 +100,8 @@ internal partial class Program
                 )
         );
         Console.Clear();
-        Console.WriteLine($"Sample configuration json file successfully saved to: {userResponse}");
-        Console.WriteLine("Press [Enter] key to go back to the main menu.");
+        ConstMessages.SMPL_CFG_SAVED.WriteLine(args: userResponse!);
+        ConstMessages.CMD_MSG_RESTART_APP.WriteLine();
         Console.Read();
         ShowWelcomeMessage();
     }

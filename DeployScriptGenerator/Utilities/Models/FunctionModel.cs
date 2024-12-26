@@ -10,4 +10,7 @@ internal class FunctionModel : SchemaModel
         Required(ErrorMessage = "FunctionModel: function is required.", AllowEmptyStrings = false)
     ]
     public required string Function { get; set; }
+
+    [JsonProperty("iterate_inner_functions", DefaultValueHandling = DefaultValueHandling.Ignore)]
+    public bool IterateInnerFunctions { get; set; } = true;
 }

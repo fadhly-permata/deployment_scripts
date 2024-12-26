@@ -1,6 +1,7 @@
 ﻿using System.Data;
 using System.Text.RegularExpressions;
 using DeployScriptGenerator.Utilities.Constants;
+using DeployScriptGenerator.Utilities.Extensions.Strings;
 using DeployScriptGenerator.Utilities.Models;
 using IDX.Utilities;
 using IDX.Utilities.DataProcessor;
@@ -12,6 +13,7 @@ namespace DeployScriptGenerator;
 
 internal partial class Program
 {
+    private const int EQUALS_CHAR_COUNT = 60;
     private static string? currentDbName;
 
     private static void Main(string[] args)
@@ -23,12 +25,12 @@ internal partial class Program
     {
         restart_process:
         Console.Clear();
-        Console.WriteLine(ConstMessages.CMD_MSG_WELCOME);
+        ConstMessages.CMD_MSG_WELCOME.WriteLine();
 
         try
         {
             if (
-                int.TryParse(Console.ReadLine(), out var userResponse)
+                int.TryParse(Console.ReadLine(), out int userResponse)
                 && userResponse is >= 1 and <= 3
             )
             {
@@ -41,20 +43,22 @@ internal partial class Program
                         GenerateDeployScript();
                         break;
                     case 3:
-                        Console.WriteLine(ConstMessages.EXITING);
+                        ConstMessages.EXITING.WriteLine();
                         break;
                 }
             }
             else
             {
-                Console.WriteLine(ConstMessages.INVALID_RESPONSE, userResponse);
+                ConstMessages.CMD_MSG_INV_RESP.WriteLine(args: userResponse);
                 goto restart_process;
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error: {ex.Message} @ {ex.StackTrace}");
-            Console.WriteLine("Press [ENTER] key to restart the application.");
+            ConstMessages.CMD_MSG_ERROR.WriteLine(
+                args: [ex.Message, ex.StackTrace ?? string.Empty]
+            );
+            ConstMessages.CMD_MSG_RESTART_APP.WriteLine();
             Console.Read();
             goto restart_process;
         }
@@ -62,66 +66,72 @@ internal partial class Program
 
     static void GenerateDeployScript()
     {
-        Console.WriteLine("Generating deploy script...");
-        var configJson = ScriptPreparation();
+        ConstMessages.DPY_SCRIPT_START.WriteLine();
+        ConfigurationModel? configJson = ScriptPreparation();
 
         if (configJson!.CleanupDirectoryFirst == true)
             CleanUpDirectory(configJson.OutputDirectory);
 
-        Console.WriteLine($"Connecting to database \"{GetDbName(configJson!)!}\"...");
-        var pghelper = DBConnection(configJson);
+        ConstMessages.CONN_TO_DB.WriteLine(args: GetDbName(configJson!) ?? string.Empty);
+        PgSqlHelper? pghelper = DBConnection(configJson);
         if (pghelper is null)
         {
-            Console.WriteLine("Failed to create database connection.");
+            ConstMessages.CONN_DB_FAIL.WriteLine();
             return;
         }
 
-        Console.WriteLine(
-            $"Connection to database to \"{GetDbName(configJson!)!}\" has been established."
-        );
+        ConstMessages.CONN_DB_ESTABLISHED.WriteLine(args: GetDbName(configJson!) ?? string.Empty);
 
-        currentDbName = GetDbName(configJson!);
-        DDLFetchTables(pghelper, configJson!);
-        DDLFetchFunctions(pghelper, configJson!);
+        currentDbName = GetDbName(configJson: configJson!);
+        DDLFetchTables(pghelper: pghelper, configJson: configJson!);
+        DDLFetchFunctions(pghelper: pghelper, configJson: configJson!);
 
-        Console.WriteLine(
-            $"Deployment Scripts has been generated on Path: {configJson!.OutputDirectory}"
-        );
+        ConstMessages.DPY_SCRIPT_GEN_SUCCESS.WriteLine(args: configJson.OutputDirectory);
 
-        Console.WriteLine("Press [Enter] key to go back to the main menu.");
+        ConstMessages.CMD_MSG_RESTART_APP.WriteLine();
         Console.Read();
         ShowWelcomeMessage();
     }
 
     private static void CleanUpDirectory(string outputDirectory)
     {
-        Console.WriteLine($"Cleaning up directory on : {outputDirectory}");
-        if (Directory.Exists(outputDirectory))
+        ConstMessages.REM_DIR.WriteLine(outputDirectory);
+        if (Directory.Exists(path: outputDirectory))
             Directory.Delete(path: outputDirectory, recursive: true);
     }
 
     static string? GetDbName(ConfigurationModel configJson) =>
         configJson
-            .ConnectionString.Split(';')
-            .FirstOrDefault(x => x.Contains("Database"))
-            ?.Split('=')[1];
+            .ConnectionString.Split(separator: ';')
+            .FirstOrDefault(static (string x) => x.Contains(value: "Database"))
+            ?.Split(separator: '=')[1];
 
     static string FilenameBuilder(ScriptDataModel sdm) =>
-        $"{sdm.Database}_{sdm.Schema}_{sdm.ObjectName}{(sdm.ParameterCount > 0 ? "_P" + sdm.ParameterCount : "")}_{sdm.ConfigJson.TicketNumber}{sdm.OperationType()}.sql";
+        ConstMessages.FILE_NAME_BLD.Format(
+            args:
+            [
+                sdm.Database,
+                sdm.Schema,
+                sdm.ObjectName,
+                sdm.ParameterCount > 0 ? $"_P{sdm.ParameterCount}" : string.Empty,
+                sdm.ConfigJson.TicketNumber,
+                sdm.OperationType()
+            ]
+        );
 
     static void WriteScript(string filename, string script)
     {
-        var dir = Path.GetDirectoryName(filename);
+        string? dir = Path.GetDirectoryName(path: filename);
 
-        if (dir is not null && !Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
+        if (dir is not null && !Directory.Exists(path: dir))
+            Directory.CreateDirectory(path: dir);
 
-        File.WriteAllText(filename, script);
+        File.WriteAllText(path: filename, contents: script);
     }
 
     static void DDLFetchTables(PgSqlHelper pghelper, ConfigurationModel configJson)
     {
-        Console.WriteLine("Fetching Tables...");
+        ConstMessages.FETCH_TBL_START.WriteLine();
 
         configJson
             .FetchDDL?.Tables?.ToList()
@@ -130,20 +140,22 @@ internal partial class Program
                 {
                     if (currentDbName != table.Database)
                     {
-                        Console.WriteLine($"Switching to database [{table.Database}].");
+                        ConstMessages.CONN_DB_SWITCH.WriteLine(args: table.Database);
 
                         pghelper.ChangeDB(table.Database);
                         currentDbName = table.Database;
                     }
 
-                    Console.WriteLine(new string('=', 10));
+                    Console.WriteLine(new string('=', EQUALS_CHAR_COUNT));
 
                     if (
                         ExecAndSaveTable(
                             pghelper: pghelper,
                             table: table,
                             configJson: configJson,
-                            onNullMessage: $"[{table.Database}.{table.Schema}.{table.Table}] : Table does not exist.",
+                            onNullMessage: ConstMessages.FETCH_TBL_NOT_EXIST.Format(
+                                args: [table.Database, table.Schema, table.Table]
+                            ),
                             type: ScriptDataModel.ScriptType.Table,
                             query: ConstQueries.FETCH_TABLES.BindWith(
                                 new Dictionary<string, object>
@@ -201,18 +213,18 @@ internal partial class Program
                             );
                     }
 
-                    Console.WriteLine(
-                        $"[{table.Database}.{table.Schema}.{table.Table}] : Table processing completed."
+                    ConstMessages.FETCH_TBL_COMPLETE.WriteLine(
+                        args: [table.Database, table.Schema, table.Table]
                     );
                 }
             );
 
-        Console.WriteLine("All tables have been processed.");
+        ConstMessages.FETCH_TBL_END.WriteLine();
     }
 
     static void DDLFetchFunctions(PgSqlHelper pghelper, ConfigurationModel configJson)
     {
-        Console.WriteLine("Fetching Functions...");
+        Console.WriteLine("\nFetching Functions...");
 
         configJson
             .FetchDDL?.Functions?.ToList()
@@ -227,7 +239,7 @@ internal partial class Program
                         currentDbName = function.Database;
                     }
 
-                    Console.WriteLine(new string('=', 10));
+                    Console.WriteLine(new string('=', EQUALS_CHAR_COUNT));
 
                     ExecAndSaveFunction(
                         pghelper: pghelper,
@@ -242,9 +254,7 @@ internal partial class Program
                         )
                     );
 
-                    Console.WriteLine(
-                        $"[{function.Database}.{function.Schema}.{function.Function}] : Function processing completed."
-                    );
+                    Console.WriteLine($"[{function.Function}] : Function processing completed.");
                 }
             );
 
@@ -302,7 +312,7 @@ internal partial class Program
         string query
     )
     {
-        pghelper.ExecuteQuery(query, out var result);
+        pghelper.ExecuteQuery(query, out List<dynamic>? result);
 
         if (result is null)
         {
@@ -316,10 +326,10 @@ internal partial class Program
 
         result.ForEach(x =>
         {
-            var jo = JObject.FromObject(x);
+            dynamic jo = JObject.FromObject(x);
             Console.WriteLine($"     [{jo["name"].ToString()}] : Processing {Enum.GetName(type)}.");
 
-            var script = jo["script"].ToString();
+            dynamic script = jo["script"].ToString();
             WriteScript(
                 script: script,
                 filename: Path.Combine(
@@ -348,8 +358,8 @@ internal partial class Program
             {
                 functions.ForEach(x =>
                 {
-                    var xSplit = x.Split('.');
-                    var fm = new FunctionModel
+                    string[] xSplit = x.Split('.');
+                    FunctionModel fm = new FunctionModel
                     {
                         Database = xSplit.Length > 2 ? xSplit[0] : table.Database,
                         Schema = xSplit.Length > 2 ? xSplit[1] : xSplit[0],
@@ -383,28 +393,28 @@ internal partial class Program
         int indentMessage = 0
     )
     {
-        pghelper.ExecuteQuery(query, out var result);
+        pghelper.ExecuteQuery(query, out List<dynamic>? result);
 
         if (result is null)
         {
             Console.WriteLine(
-                $"{new string(' ', indentMessage)}[Function] : Function does not exist."
+                $"{new string(' ', indentMessage)}[{function.Function}] : Function does not exist."
             );
             return;
         }
 
         Console.WriteLine(
-            $"{new string(' ', indentMessage)}[Function] : Found {result.Count} function."
+            $"{new string(' ', indentMessage)}[{function.Function}] : Found {result.Count} function."
         );
 
         result.ForEach(x =>
         {
-            var jo = JObject.FromObject(x);
+            dynamic jo = JObject.FromObject(x);
             Console.WriteLine(
                 $"{new string(' ', indentMessage + 2)}[{jo["name"].ToString()}] : Processing function."
             );
 
-            var script = jo["script"].ToString();
+            dynamic script = jo["script"].ToString();
             WriteScript(
                 script: script,
                 filename: Path.Combine(
@@ -425,6 +435,9 @@ internal partial class Program
                 )
             );
 
+            if (function.IterateInnerFunctions == false)
+                return;
+
             List<string> functions = ExtractFunctions(script);
             Console.WriteLine(
                 $"{new string(' ', indentMessage + 2)}Found {functions.Count} functions inside function \"{jo["name"].ToString()}\": [{string.Join(", ", functions)}]."
@@ -434,7 +447,7 @@ internal partial class Program
             {
                 functions.ForEach(x =>
                 {
-                    var xSplit = x.Split('.');
+                    string[] xSplit = x.Split('.');
                     if (xSplit.Length < 2)
                     {
                         Console.WriteLine(
@@ -443,11 +456,12 @@ internal partial class Program
                         return;
                     }
 
-                    var fm = new FunctionModel
+                    FunctionModel fm = new FunctionModel
                     {
                         Database = xSplit.Length > 2 ? xSplit[0] : function.Database,
                         Schema = xSplit.Length > 2 ? xSplit[1] : xSplit[0],
-                        Function = xSplit.Length > 2 ? xSplit[2] : xSplit[1]
+                        Function = xSplit.Length > 2 ? xSplit[2] : xSplit[1],
+                        IterateInnerFunctions = function.IterateInnerFunctions
                     };
 
                     Console.WriteLine(
@@ -480,7 +494,7 @@ internal partial class Program
     {
         MatchCollection matches = FunctionRegex().Matches(query);
 
-        var functionNames = new HashSet<string>();
+        HashSet<string> functionNames = new HashSet<string>();
 
         foreach (Match match in matches)
         {
@@ -499,7 +513,7 @@ internal partial class Program
         {
             Console.WriteLine("Please specify the location of the json configuration file:");
 
-            var userResponse = Console.ReadLine();
+            string? userResponse = Console.ReadLine();
             if (string.IsNullOrWhiteSpace(userResponse))
                 throw new ArgumentException("Configuration file path can not be empty.");
 
@@ -507,8 +521,8 @@ internal partial class Program
                 throw new FileNotFoundException("The specified file does not exist.");
 
             Console.WriteLine("Reading configuration file...");
-            var configFileContent = File.ReadAllText(userResponse!);
-            var configJson =
+            string configFileContent = File.ReadAllText(userResponse!);
+            ConfigurationModel configJson =
                 JsonConvert.DeserializeObject<ConfigurationModel>(configFileContent)
                 ?? throw new DataException("The specified file could not be parsed.");
 
@@ -540,7 +554,9 @@ internal partial class Program
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error: {ex.Message} @ {ex.StackTrace}");
+            ConstMessages.CMD_MSG_ERROR.WriteLine(
+                args: [ex.Message, ex.StackTrace ?? string.Empty]
+            );
             return default;
         }
     }
