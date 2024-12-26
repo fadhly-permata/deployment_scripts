@@ -142,11 +142,11 @@ internal partial class Program
                     {
                         ConstMessages.CONN_DB_SWITCH.WriteLine(args: table.Database);
 
-                        pghelper.ChangeDB(table.Database);
+                        pghelper.ChangeDB(dbName: table.Database);
                         currentDbName = table.Database;
                     }
 
-                    Console.WriteLine(new string('=', EQUALS_CHAR_COUNT));
+                    Console.WriteLine(value: new string(c: '=', count: EQUALS_CHAR_COUNT));
 
                     if (
                         ExecAndSaveTable(
@@ -158,7 +158,7 @@ internal partial class Program
                             ),
                             type: ScriptDataModel.ScriptType.Table,
                             query: ConstQueries.FETCH_TABLES.BindWith(
-                                new Dictionary<string, object>
+                                replacement: new Dictionary<string, object>
                                 {
                                     { "{{schema_name}}", table.Schema },
                                     { "{{table_name}}", table.Table }
@@ -174,7 +174,7 @@ internal partial class Program
                                 configJson: configJson,
                                 type: ScriptDataModel.ScriptType.Constraint,
                                 query: ConstQueries.FETCH_TABLES_CONSTRAINS.BindWith(
-                                    new Dictionary<string, object>
+                                    replacement: new Dictionary<string, object>
                                     {
                                         { "{{schema_name}}", table.Schema },
                                         { "{{table_name}}", table.Table }
@@ -189,7 +189,7 @@ internal partial class Program
                                 configJson: configJson,
                                 type: ScriptDataModel.ScriptType.Index,
                                 query: ConstQueries.FETCH_TABLES_INDEXES.BindWith(
-                                    new Dictionary<string, object>
+                                    replacement: new Dictionary<string, object>
                                     {
                                         { "{{schema_name}}", table.Schema },
                                         { "{{table_name}}", table.Table }
@@ -204,7 +204,7 @@ internal partial class Program
                                 configJson: configJson,
                                 type: ScriptDataModel.ScriptType.Trigger,
                                 query: ConstQueries.FETCH_TABLES_TRIGGERS.BindWith(
-                                    new Dictionary<string, object>
+                                    replacement: new Dictionary<string, object>
                                     {
                                         { "{{schema_name}}", table.Schema },
                                         { "{{table_name}}", table.Table }
@@ -239,14 +239,14 @@ internal partial class Program
                         currentDbName = function.Database;
                     }
 
-                    Console.WriteLine(new string('=', EQUALS_CHAR_COUNT));
+                    Console.WriteLine(value: new string(c: '=', count: EQUALS_CHAR_COUNT));
 
                     ExecAndSaveFunction(
                         pghelper: pghelper,
                         function: function,
                         configJson: configJson,
                         query: ConstQueries.FETCH_FUNCTIONS.BindWith(
-                            new Dictionary<string, object>
+                            replacement: new Dictionary<string, object>
                             {
                                 { "{{schema_name}}", function.Schema },
                                 { "{{function_name}}", function.Function }
@@ -274,11 +274,11 @@ internal partial class Program
             args: [table.Database, table.Schema, table.Table]
         );
 
-        pghelper.ExecuteScalar(query, out string? result);
+        pghelper.ExecuteScalar(query: query, result: out string? result);
 
         if (string.IsNullOrWhiteSpace(result))
         {
-            Console.WriteLine(onNullMessage);
+            onNullMessage.WriteLine();
             return false;
         }
 
@@ -289,7 +289,7 @@ internal partial class Program
                 path2: table.Database,
                 path3: table.Schema,
                 path4: FilenameBuilder(
-                    new ScriptDataModel
+                    sdm: new ScriptDataModel
                     {
                         Type = type,
                         ConfigJson = configJson,
@@ -326,73 +326,80 @@ internal partial class Program
             args: [Enum.GetName(type) ?? string.Empty, result.Count]
         );
 
-        result.ForEach(x =>
-        {
-            dynamic jo = JObject.FromObject(x);
-            ConstMessages.FETCH_TBL_PROP_PROC.WriteLine(
-                args: [jo["name"].ToString(), Enum.GetName(type) ?? string.Empty]
-            );
-
-            dynamic script = jo["script"].ToString();
-            WriteScript(
-                script: script,
-                filename: Path.Combine(
-                    path1: configJson.OutputDirectory,
-                    path2: table.Database,
-                    path3: table.Schema,
-                    path4: FilenameBuilder(
-                        new ScriptDataModel
-                        {
-                            Type = type,
-                            ConfigJson = configJson,
-                            ObjectName = jo["name"].ToString(),
-                            Schema = table.Schema,
-                            Database = table.Database
-                        }
-                    )
-                )
-            );
-
-            List<string> functions = ExtractFunctions(script);
-            ConstMessages.FETCH_TBL_PROP_FUNC_FOUND_COUNT.WriteLine(
-                args:
-                [
-                    functions.Count,
-                    Enum.GetName(type) ?? string.Empty,
-                    jo["name"].ToString(),
-                    string.Join(", ", functions)
-                ]
-            );
-
-            if (functions.Count > 0)
+        result.ForEach(
+            action: (dynamic dataRow) =>
             {
-                functions.ForEach(x =>
-                {
-                    string[] xSplit = x.Split('.');
-                    FunctionModel fm = new FunctionModel
-                    {
-                        Database = xSplit.Length > 2 ? xSplit[0] : table.Database,
-                        Schema = xSplit.Length > 2 ? xSplit[1] : xSplit[0],
-                        Function = xSplit.Length > 2 ? xSplit[2] : xSplit[1]
-                    };
+                dynamic jo = JObject.FromObject(dataRow);
+                ConstMessages.FETCH_TBL_PROP_PROC.WriteLine(
+                    args: [jo["name"].ToString(), Enum.GetName(type) ?? string.Empty]
+                );
 
-                    ConstMessages.FETCH_TBL_PROP_FUNC_PROC.WriteLine(args: [new string(' ', 9), x]);
-                    ExecAndSaveFunction(
-                        pghelper: pghelper,
-                        function: fm,
-                        configJson: configJson,
-                        query: ConstQueries.FETCH_FUNCTIONS.BindWith(
-                            new Dictionary<string, object>
+                dynamic script = jo["script"].ToString();
+                WriteScript(
+                    script: script,
+                    filename: Path.Combine(
+                        path1: configJson.OutputDirectory,
+                        path2: table.Database,
+                        path3: table.Schema,
+                        path4: FilenameBuilder(
+                            sdm: new ScriptDataModel
                             {
-                                { "{{schema_name}}", fm.Schema },
-                                { "{{function_name}}", fm.Function }
+                                Type = type,
+                                ConfigJson = configJson,
+                                ObjectName = jo["name"].ToString(),
+                                Schema = table.Schema,
+                                Database = table.Database
                             }
-                        ),
-                        indentMessage: 9
+                        )
+                    )
+                );
+
+                List<string> functions = ExtractFunctions(script);
+                ConstMessages.FETCH_TBL_PROP_FUNC_FOUND_COUNT.WriteLine(
+                    args:
+                    [
+                        functions.Count,
+                        Enum.GetName(type) ?? string.Empty,
+                        jo["name"].ToString(),
+                        string.Join(separator: ", ", values: functions)
+                    ]
+                );
+
+                if (functions.Count > 0)
+                {
+                    functions.ForEach(
+                        action: (string fnName) =>
+                        {
+                            string[] fnSplit = fnName.Split('.');
+                            FunctionModel fm =
+                                new()
+                                {
+                                    Database = fnSplit.Length > 2 ? fnSplit[0] : table.Database,
+                                    Schema = fnSplit.Length > 2 ? fnSplit[1] : fnSplit[0],
+                                    Function = fnSplit.Length > 2 ? fnSplit[2] : fnSplit[1]
+                                };
+
+                            ConstMessages.FETCH_TBL_PROP_FUNC_PROC.WriteLine(
+                                args: [new string(' ', 9), fnName]
+                            );
+                            ExecAndSaveFunction(
+                                pghelper: pghelper,
+                                function: fm,
+                                configJson: configJson,
+                                query: ConstQueries.FETCH_FUNCTIONS.BindWith(
+                                    replacement: new Dictionary<string, object>
+                                    {
+                                        { "{{schema_name}}", fm.Schema },
+                                        { "{{function_name}}", fm.Function }
+                                    }
+                                ),
+                                indentMessage: 9
+                            );
+                        }
                     );
-                });
+                }
             }
-        });
+        );
     }
 
     private static void ExecAndSaveFunction(
@@ -408,97 +415,103 @@ internal partial class Program
         if (result is null)
         {
             ConstMessages.FETCH_FUNC_NOT_EXIST.WriteLine(
-                args: [new string(' ', indentMessage), function.Function]
+                args: [new string(c: ' ', count: indentMessage), function.Function]
             );
             return;
         }
 
         ConstMessages.FETCH_FUNC_PROC_FOUND_COUNT.WriteLine(
-            args: [new string(' ', indentMessage), function.Function, result.Count]
+            args: [new string(c: ' ', count: indentMessage), function.Function, result.Count]
         );
 
-        result.ForEach(x =>
-        {
-            dynamic jo = JObject.FromObject(x);
-            ConstMessages.FETCH_FUNC_PROC_START.WriteLine(
-                args: [new string(' ', indentMessage), jo["name"].ToString()]
-            );
-
-            dynamic script = jo["script"].ToString();
-            WriteScript(
-                script: script,
-                filename: Path.Combine(
-                    path1: configJson.OutputDirectory,
-                    path2: function.Database,
-                    path3: function.Schema,
-                    path4: FilenameBuilder(
-                        new ScriptDataModel
-                        {
-                            Type = ScriptDataModel.ScriptType.Function,
-                            ConfigJson = configJson,
-                            ObjectName = jo["name"].ToString(),
-                            ParameterCount = int.Parse(jo["pcount"].ToString() ?? "0"),
-                            Schema = function.Schema,
-                            Database = function.Database
-                        }
-                    )
-                )
-            );
-
-            if (function.IterateInnerFunctions == false)
-                return;
-
-            List<string> functions = ExtractFunctions(script);
-            ConstMessages.FETCH_FUNC_INSIDE_FUNC_COUNT.WriteLine(
-                args:
-                [
-                    new string(' ', indentMessage + 2),
-                    functions.Count,
-                    jo["name"].ToString(),
-                    string.Join(", ", functions)
-                ]
-            );
-
-            if (functions.Count > 0)
+        result.ForEach(
+            action: (dynamic fn) =>
             {
-                functions.ForEach(x =>
-                {
-                    string[] xSplit = x.Split('.');
-                    if (xSplit.Length < 2)
-                    {
-                        ConstMessages.FETCH_FUNC_INSIDE_FUNC_SKIP.WriteLine(
-                            args: [new string(' ', indentMessage + 4), x]
-                        );
-                        return;
-                    }
+                dynamic jo = JObject.FromObject(fn);
+                ConstMessages.FETCH_FUNC_PROC_START.WriteLine(
+                    args: [new string(c: ' ', count: indentMessage), jo["name"].ToString()]
+                );
 
-                    FunctionModel fm = new FunctionModel
-                    {
-                        Database = xSplit.Length > 2 ? xSplit[0] : function.Database,
-                        Schema = xSplit.Length > 2 ? xSplit[1] : xSplit[0],
-                        Function = xSplit.Length > 2 ? xSplit[2] : xSplit[1],
-                        IterateInnerFunctions = function.IterateInnerFunctions
-                    };
-
-                    ConstMessages.FETCH_FUNC_INSIDE_FUNC_PROC.WriteLine(
-                        args: [new string(' ', indentMessage + 4), x]
-                    );
-                    ExecAndSaveFunction(
-                        pghelper: pghelper,
-                        function: fm,
-                        configJson: configJson,
-                        query: ConstQueries.FETCH_FUNCTIONS.BindWith(
-                            new Dictionary<string, object>
+                dynamic script = jo["script"].ToString();
+                WriteScript(
+                    script: script,
+                    filename: Path.Combine(
+                        path1: configJson.OutputDirectory,
+                        path2: function.Database,
+                        path3: function.Schema,
+                        path4: FilenameBuilder(
+                            sdm: new ScriptDataModel
                             {
-                                { "{{schema_name}}", fm.Schema },
-                                { "{{function_name}}", fm.Function }
+                                Type = ScriptDataModel.ScriptType.Function,
+                                ConfigJson = configJson,
+                                ObjectName = jo["name"].ToString(),
+                                ParameterCount = int.Parse(jo["pcount"].ToString() ?? "0"),
+                                Schema = function.Schema,
+                                Database = function.Database
                             }
-                        ),
-                        indentMessage: indentMessage + 4
+                        )
+                    )
+                );
+
+                if (function.IterateInnerFunctions == false)
+                    return;
+
+                List<string> functions = ExtractFunctions(query: script);
+                ConstMessages.FETCH_FUNC_INSIDE_FUNC_COUNT.WriteLine(
+                    args:
+                    [
+                        new string(c: ' ', count: indentMessage + 2),
+                        functions.Count,
+                        jo["name"].ToString(),
+                        string.Join(separator: ", ", values: functions)
+                    ]
+                );
+
+                if (functions.Count > 0)
+                {
+                    functions.ForEach(
+                        action: (string subFn) =>
+                        {
+                            string[] sfnSplit = subFn.Split('.');
+                            if (sfnSplit.Length < 2)
+                            {
+                                ConstMessages.FETCH_FUNC_INSIDE_FUNC_SKIP.WriteLine(
+                                    args: [new string(c: ' ', count: indentMessage + 4), subFn]
+                                );
+                                return;
+                            }
+
+                            FunctionModel fm =
+                                new()
+                                {
+                                    Database =
+                                        sfnSplit.Length > 2 ? sfnSplit[0] : function.Database,
+                                    Schema = sfnSplit.Length > 2 ? sfnSplit[1] : sfnSplit[0],
+                                    Function = sfnSplit.Length > 2 ? sfnSplit[2] : sfnSplit[1],
+                                    IterateInnerFunctions = function.IterateInnerFunctions
+                                };
+
+                            ConstMessages.FETCH_FUNC_INSIDE_FUNC_PROC.WriteLine(
+                                args: [new string(c: ' ', count: indentMessage + 4), subFn]
+                            );
+                            ExecAndSaveFunction(
+                                pghelper: pghelper,
+                                function: fm,
+                                configJson: configJson,
+                                query: ConstQueries.FETCH_FUNCTIONS.BindWith(
+                                    replacement: new Dictionary<string, object>
+                                    {
+                                        { "{{schema_name}}", fm.Schema },
+                                        { "{{function_name}}", fm.Function }
+                                    }
+                                ),
+                                indentMessage: indentMessage + 4
+                            );
+                        }
                     );
-                });
+                }
             }
-        });
+        );
     }
 
     [GeneratedRegex(
@@ -509,16 +522,13 @@ internal partial class Program
     static List<string> ExtractFunctions(string query)
     {
         MatchCollection matches = FunctionRegex().Matches(query);
-
-        HashSet<string> functionNames = new HashSet<string>();
+        HashSet<string> functionNames = [];
 
         foreach (Match match in matches)
-        {
             if (match.Groups[2].Success)
                 functionNames.Add(match.Groups[2].Value);
-        }
 
-        return functionNames.ToList();
+        return [.. functionNames];
     }
 
     static ConfigurationModel? ScriptPreparation()

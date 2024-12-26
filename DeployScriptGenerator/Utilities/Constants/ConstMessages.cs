@@ -37,7 +37,7 @@ public static class ConstMessages
     internal const string FETCH_FUNC_COMPLETED = "[{0}]: Function processing is completed.";
     internal const string FETCH_FUNC_END = "All functions have been processed successfully.";
     internal const string FETCH_FUNC_INSIDE_FUNC_COUNT =
-        "{0}Found {1} functions inside function \"{3}\": [{4}].";
+        "{0}Found {1} functions inside function \"{2}\": [{3}].";
     internal const string FETCH_FUNC_INSIDE_FUNC_PROC = "{0}Processing function: {1}.";
     internal const string FETCH_FUNC_INSIDE_FUNC_SKIP =
         "{0}[Function] : The function named \"{1}\" will not be processed.";
