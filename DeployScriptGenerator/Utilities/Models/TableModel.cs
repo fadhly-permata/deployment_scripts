@@ -10,4 +10,7 @@ internal class TableModel : SchemaModel
         Required(ErrorMessage = "TableModel: table is required.", AllowEmptyStrings = false)
     ]
     public required string Table { get; set; }
+    public bool? FetchConstraints { get; set; } = true;
+    public bool? FetchIndexes { get; set; } = true;
+    public bool? FetchTriggers { get; set; } = true;
 }

@@ -1,9 +1,18 @@
-﻿using DeployScriptGenerator.Utilities.Constants;
+﻿using System.Data;
+using DeployScriptGenerator.Utilities.Constants;
 using DeployScriptGenerator.Utilities.Models;
+using IDX.Utilities;
+using IDX.Utilities.DataProcessor;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using static DeployScriptGenerator.Utilities.Models.Program;
 
-internal class Program
+namespace DeployScriptGenerator;
+
+internal partial class Program
 {
+    private static string? currentDbName;
+
     private static void Main(string[] args)
     {
         ShowWelcomeMessage();
@@ -11,120 +20,303 @@ internal class Program
 
     static void ShowWelcomeMessage()
     {
+        restart_process:
+        Console.Clear();
         Console.WriteLine(ConstMessages.CMD_MSG_WELCOME);
 
-        var userResponse = Console.ReadLine();
-
-        switch (userResponse)
+        try
         {
-            case "1":
-                GenerateSampleJsonConfigs();
-                break;
-            case "2":
-                GenerateSampleJsonConfigs();
-                break;
-            case "3":
-                Console.WriteLine(ConstMessages.CMD_MSG_EXITING);
-                return;
-            default:
-                InvalidResponse(userResponse);
-                break;
+            if (
+                int.TryParse(Console.ReadLine(), out var userResponse)
+                && userResponse is >= 1 and <= 3
+            )
+            {
+                switch (userResponse)
+                {
+                    case 1:
+                        GenerateSampleJsonConfigs();
+                        break;
+                    case 2:
+                        GenerateDeployScript();
+                        break;
+                    case 3:
+                        Console.WriteLine(ConstMessages.EXITING);
+                        break;
+                }
+            }
+            else
+            {
+                Console.WriteLine(ConstMessages.INVALID_RESPONSE, userResponse);
+                goto restart_process;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message} @ {ex.StackTrace}");
+            Console.WriteLine("Press [ENTER] key to restart the application.");
+            Console.Read();
+            goto restart_process;
         }
     }
 
-    static void InvalidResponse(string? userResponse)
+    static void GenerateDeployScript()
     {
-        Console.Clear();
-        Console.WriteLine(ConstMessages.CMD_MSG_INVALID_RESPONSE, userResponse);
+        Console.WriteLine("Generating deploy script...");
+        var configJson = ScriptPreparation();
+
+        Console.WriteLine($"Connecting to database \"{GetDbName(configJson!)!}\"...");
+        var pghelper = DBConnection(configJson);
+        if (pghelper is null)
+        {
+            Console.WriteLine("Failed to create database connection.");
+            return;
+        }
+
+        Console.WriteLine(
+            $"Connection to database to \"{GetDbName(configJson!)!}\" has been established."
+        );
+
+        currentDbName = GetDbName(configJson!);
+        DDLFetchTables(pghelper, configJson!);
+
+        Console.WriteLine(
+            $"Deployment Scripts has been generated on Path: {configJson!.OutputDirectory}"
+        );
+
+        Console.WriteLine("Press [Enter] key to go back to the main menu.");
+        Console.Read();
         ShowWelcomeMessage();
     }
 
-    static void GenerateSampleJsonConfigs()
+    static string? GetDbName(ConfigurationModel configJson) =>
+        configJson
+            .ConnectionString.Split(';')
+            .FirstOrDefault(x => x.Contains("Database"))
+            ?.Split('=')[1];
+
+    static string FilenameBuilder(ScriptDataModel sdm) =>
+        $"{sdm.Database}_{sdm.Schema}_{sdm.ObjectName}_{sdm.ConfigJson.TicketNumber}{sdm.OperationType()}.sql";
+
+    static void WriteScript(string filename, string script)
     {
-        Console.Clear();
-        Console.WriteLine("Please specify the path of the sample json configuration file.");
-        var userResponse = Console.ReadLine();
+        var dir = Path.GetDirectoryName(filename);
 
-        if (string.IsNullOrWhiteSpace(userResponse))
-        {
-            GenerateSampleJsonConfigs();
-            return;
-        }
+        if (dir is not null && !Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
 
-        if (Directory.Exists(Path.GetDirectoryName(userResponse)) == false)
-        {
-            Console.WriteLine("Directory does not exist. Please try again.");
-            GenerateSampleJsonConfigs();
-            return;
-        }
+        File.WriteAllText(filename, script);
+    }
 
-        File.WriteAllText(
-            path: userResponse,
-            contents: (string?)
-                JsonConvert.SerializeObject(
-                    formatting: Formatting.Indented,
-                    value: new ConfigurationModel
+    static void DDLFetchTables(PgSqlHelper pghelper, ConfigurationModel configJson)
+    {
+        Console.WriteLine("Fetching table DDLs...");
+        configJson
+            .FetchDDL?.Tables?.ToList()
+            .ForEach(
+                (TableModel table) =>
+                {
+                    Console.WriteLine(
+                        $"Processing {table.Database}.{table.Schema}.{table.Table}..."
+                    );
+
+                    if (currentDbName != table.Database)
                     {
-                        OutputDirectory =
-                            "/media/fadhly/Data/-Repo/deployment_scripts/DeployScriptGenerator/Data/sampah/sample_output",
-                        TicketNumber = "T123456",
-                        FetchDDL = new FetchDDLModel
-                        {
-                            Tables =
-                            [
-                                new TableModel
+                        Console.WriteLine($"Switching to database {table.Database}...");
+
+                        pghelper.ChangeDB(table.Database);
+                        currentDbName = table.Database;
+                    }
+
+                    ExecAndSaveScalar(
+                        pghelper: pghelper,
+                        table: table,
+                        configJson: configJson,
+                        onNullMessage: $"Table [{table.Database}.{table.Schema}.{table.Table}] does not exist.",
+                        type: ScriptDataModel.ScriptType.Table,
+                        query: ConstQueries.FETCH_TABLES.BindWith(
+                            new Dictionary<string, object>
+                            {
+                                { "{{schema_name}}", table.Schema },
+                                { "{{table_name}}", table.Table }
+                            }
+                        )
+                    );
+
+                    if (table.FetchConstraints == true)
+                        ExecAndSaveTableProperties(
+                            pghelper: pghelper,
+                            table: table,
+                            configJson: configJson,
+                            type: ScriptDataModel.ScriptType.Constraint,
+                            query: ConstQueries.FETCH_TABLES_CONSTRAINS.BindWith(
+                                new Dictionary<string, object>
                                 {
-                                    Db = "idc.en",
-                                    Schema = "public",
-                                    Table = "component_de_cb"
-                                },
-                                new TableModel
-                                {
-                                    Db = "idc.en",
-                                    Schema = "in_memory",
-                                    Table = "df_sync_status"
+                                    { "{{schema_name}}", table.Schema },
+                                    { "{{table_name}}", table.Table }
                                 }
-                            ],
-                            Functions =
-                            [
-                                new FunctionModel
+                            )
+                        );
+
+                    if (table.FetchIndexes == true)
+                        ExecAndSaveTableProperties(
+                            pghelper: pghelper,
+                            table: table,
+                            configJson: configJson,
+                            type: ScriptDataModel.ScriptType.Index,
+                            query: ConstQueries.FETCH_TABLES_INDEXES.BindWith(
+                                new Dictionary<string, object>
                                 {
-                                    Db = "idc.en",
-                                    Schema = "in_memory",
-                                    Function = "component_de_select"
-                                },
-                                new FunctionModel
-                                {
-                                    Db = "idc.en",
-                                    Schema = "in_memory",
-                                    Function = "config_master_param_generator"
+                                    { "{{schema_name}}", table.Schema },
+                                    { "{{table_name}}", table.Table }
                                 }
-                            ],
-                            Views =
-                            [
-                                new ViewModel
-                                {
-                                    Db = "idc.en",
-                                    Schema = "public",
-                                    View = "vw_los_data_mapping"
-                                },
-                                new ViewModel
-                                {
-                                    Db = "idc.en",
-                                    Schema = "public",
-                                    View = "vw_master_summary"
-                                }
-                            ]
-                        },
-                        CreateDDL = new CreateDDLModel
-                        {
-                            Databases = ["idc.en", "idc.kaml"],
-                            Schemas = [new SchemaModel { Db = "idc.en", Schema = "in_memory" }]
-                        }
+                            )
+                        );
+
+                    Console.WriteLine(
+                        $"Finished processing {table.Database}.{table.Schema}.{table.Table}."
+                    );
+                }
+            );
+
+        Console.WriteLine("Finished fetching table DDLs.");
+    }
+
+    private static void ExecAndSaveScalar(
+        PgSqlHelper pghelper,
+        TableModel table,
+        ConfigurationModel configJson,
+        ScriptDataModel.ScriptType type,
+        string onNullMessage,
+        string query
+    )
+    {
+        pghelper.ExecuteScalar(query, out string? result);
+
+        if (string.IsNullOrWhiteSpace(result))
+        {
+            Console.WriteLine(onNullMessage);
+            return;
+        }
+
+        WriteScript(
+            script: result,
+            filename: Path.Combine(
+                path1: configJson.OutputDirectory,
+                path2: table.Database,
+                path3: table.Schema,
+                path4: FilenameBuilder(
+                    new ScriptDataModel
+                    {
+                        Type = type,
+                        ConfigJson = configJson,
+                        ObjectName = table.Table,
+                        Schema = table.Schema,
+                        Database = table.Database
                     }
                 )
+            )
         );
-        Console.Clear();
-        Console.WriteLine($"Sample configuration json file successfully saved to: {userResponse}");
+    }
+
+    private static void ExecAndSaveTableProperties(
+        PgSqlHelper pghelper,
+        TableModel table,
+        ConfigurationModel configJson,
+        ScriptDataModel.ScriptType type,
+        string query
+    )
+    {
+        Console.WriteLine(
+            $"Fetching {Enum.GetName(type)}s for table \"{table.Database}.{table.Schema}.{table.Table}\"..."
+        );
+        pghelper.ExecuteQuery(query, out var result);
+
+        if (result is null)
+        {
+            Console.WriteLine(
+                $"No {Enum.GetName(type)} found for table \"{table.Database}.{table.Schema}.{table.Table}\"."
+            );
+            return;
+        }
+
+        result.ForEach(x =>
+        {
+            var jo = JObject.FromObject(x);
+            Console.WriteLine(
+                $"Processing {Enum.GetName(type)} \"{jo["name"].ToString()}\" for table \"{table.Database}.{table.Schema}.{table.Table}\"."
+            );
+
+            WriteScript(
+                script: jo["script"].ToString(),
+                filename: Path.Combine(
+                    path1: configJson.OutputDirectory,
+                    path2: table.Database,
+                    path3: table.Schema,
+                    path4: FilenameBuilder(
+                        new ScriptDataModel
+                        {
+                            Type = type,
+                            ConfigJson = configJson,
+                            ObjectName = jo["name"].ToString(),
+                            Schema = table.Schema,
+                            Database = table.Database
+                        }
+                    )
+                )
+            );
+        });
+    }
+
+    static ConfigurationModel? ScriptPreparation()
+    {
+        restart_process:
+
+        try
+        {
+            Console.WriteLine("Please specify the location of the json configuration file:");
+
+            var userResponse = Console.ReadLine();
+            if (string.IsNullOrWhiteSpace(userResponse))
+                throw new ArgumentException("Configuration file path can not be empty.");
+
+            if (File.Exists(userResponse) == false)
+                throw new FileNotFoundException("The specified file does not exist.");
+
+            var configFileContent = File.ReadAllText(userResponse!);
+            var configJson =
+                JsonConvert.DeserializeObject<ConfigurationModel>(configFileContent)
+                ?? throw new DataException("The specified file could not be parsed.");
+
+            return configJson;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+            Console.WriteLine(
+                "Press <r> to try again or press any other key to go back to the main menu?"
+            );
+            if (Console.ReadLine()?.ToLower() == "r")
+                goto restart_process;
+            else
+                ShowWelcomeMessage();
+
+            return default;
+        }
+    }
+
+    static PgSqlHelper? DBConnection(ConfigurationModel? configJson)
+    {
+        try
+        {
+            return new PgSqlHelper(configJson!.ConnectionString).Connect(
+                useTransaction: false,
+                disconnectFirst: true
+            );
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message} @ {ex.StackTrace}");
+            return default;
+        }
     }
 }

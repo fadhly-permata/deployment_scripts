@@ -12,7 +12,7 @@ internal class SchemaModel
             AllowEmptyStrings = false
         )
     ]
-    public required string Db { get; set; }
+    public required string Database { get; set; }
 
     [
         JsonProperty("schema"),
