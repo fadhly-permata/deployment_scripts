@@ -17,7 +17,7 @@ internal partial class Program
         if (string.IsNullOrWhiteSpace(userResponse))
         {
             ConstMessages.SMPL_CFG_PATH_CANNOT_EMPTY.WriteLine();
-            ConstMessages.SMPL_CFG_RETRY_OR_MAIN_MENU.WriteLine();
+            ConstMessages.CMD_MSG_RETRY_OR_MAIN_MENU.WriteLine();
 
             if (Console.ReadLine()?.ToLower() == "r")
                 goto restart_process;
@@ -28,7 +28,7 @@ internal partial class Program
         if (Directory.Exists(Path.GetDirectoryName(userResponse)) == false)
         {
             ConstMessages.SMPL_CFG_DIR_NOT_FOUND.WriteLine();
-            ConstMessages.SMPL_CFG_RETRY_OR_MAIN_MENU.WriteLine();
+            ConstMessages.CMD_MSG_RETRY_OR_MAIN_MENU.WriteLine();
 
             if (Console.ReadLine()?.ToLower() == "r")
                 goto restart_process;
@@ -48,6 +48,7 @@ internal partial class Program
                         OutputDirectory =
                             "/media/fadhly/Data/-Repo/deployment_scripts/DeployScriptGenerator/Data/sampah/sample_output",
                         TicketNumber = "T123456",
+                        CleanupDirectoryFirst = true,
                         FetchDDL = new FetchDDLModel
                         {
                             Tables =

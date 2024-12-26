@@ -43,7 +43,7 @@ internal partial class Program
                         GenerateDeployScript();
                         break;
                     case 3:
-                        ConstMessages.EXITING.WriteLine();
+                        ConstMessages.CMD_MSG_EXITING.WriteLine();
                         break;
                 }
             }
@@ -72,7 +72,7 @@ internal partial class Program
         if (configJson!.CleanupDirectoryFirst == true)
             CleanUpDirectory(configJson.OutputDirectory);
 
-        ConstMessages.CONN_TO_DB.WriteLine(args: GetDbName(configJson!) ?? string.Empty);
+        ConstMessages.CONN_DB_TRY.WriteLine(args: GetDbName(configJson!) ?? string.Empty);
         PgSqlHelper? pghelper = DBConnection(configJson);
         if (pghelper is null)
         {
@@ -213,7 +213,7 @@ internal partial class Program
                             );
                     }
 
-                    ConstMessages.FETCH_TBL_COMPLETE.WriteLine(
+                    ConstMessages.FETCH_TBL_COMPLETED.WriteLine(
                         args: [table.Database, table.Schema, table.Table]
                     );
                 }
@@ -224,7 +224,7 @@ internal partial class Program
 
     static void DDLFetchFunctions(PgSqlHelper pghelper, ConfigurationModel configJson)
     {
-        Console.WriteLine("\nFetching Functions...");
+        ConstMessages.FETCH_FUNC_START.WriteLine();
 
         configJson
             .FetchDDL?.Functions?.ToList()
@@ -233,7 +233,7 @@ internal partial class Program
                 {
                     if (currentDbName != function.Database)
                     {
-                        Console.WriteLine($"Switching to database [{function.Database}].");
+                        ConstMessages.CONN_DB_SWITCH.WriteLine(args: function.Database);
 
                         pghelper.ChangeDB(function.Database);
                         currentDbName = function.Database;
@@ -254,11 +254,11 @@ internal partial class Program
                         )
                     );
 
-                    Console.WriteLine($"[{function.Function}] : Function processing completed.");
+                    ConstMessages.FETCH_FUNC_COMPLETED.WriteLine(args: function.Function);
                 }
             );
 
-        Console.WriteLine("All functions have been processed successfully.");
+        ConstMessages.FETCH_FUNC_END.WriteLine();
     }
 
     private static bool ExecAndSaveTable(
@@ -270,8 +270,8 @@ internal partial class Program
         string query
     )
     {
-        Console.WriteLine(
-            $"[{table.Database}.{table.Schema}.{table.Table}] : Gathering table informations"
+        ConstMessages.FETCH_TBL_GET_INFO.WriteLine(
+            args: [table.Database, table.Schema, table.Table]
         );
 
         pghelper.ExecuteScalar(query, out string? result);
@@ -316,18 +316,22 @@ internal partial class Program
 
         if (result is null)
         {
-            Console.WriteLine($"   [{Enum.GetName(type)}] : Does not have {Enum.GetName(type)}.");
+            ConstMessages.FETCH_TBL_PROP_NOT_FOUND.WriteLine(
+                args: Enum.GetName(type) ?? string.Empty
+            );
             return;
         }
 
-        Console.WriteLine(
-            $"   [{Enum.GetName(type)}] : Found {result.Count} {Enum.GetName(type)}."
+        ConstMessages.FETCH_TBL_PROP_FOUND_COUNT.WriteLine(
+            args: [Enum.GetName(type) ?? string.Empty, result.Count]
         );
 
         result.ForEach(x =>
         {
             dynamic jo = JObject.FromObject(x);
-            Console.WriteLine($"     [{jo["name"].ToString()}] : Processing {Enum.GetName(type)}.");
+            ConstMessages.FETCH_TBL_PROP_PROC.WriteLine(
+                args: [jo["name"].ToString(), Enum.GetName(type) ?? string.Empty]
+            );
 
             dynamic script = jo["script"].ToString();
             WriteScript(
@@ -350,8 +354,14 @@ internal partial class Program
             );
 
             List<string> functions = ExtractFunctions(script);
-            Console.WriteLine(
-                $"       Found {functions.Count} functions on {Enum.GetName(type)} \"{jo["name"].ToString()}\": [{string.Join(", ", functions)}]."
+            ConstMessages.FETCH_TBL_PROP_FUNC_FOUND_COUNT.WriteLine(
+                args:
+                [
+                    functions.Count,
+                    Enum.GetName(type) ?? string.Empty,
+                    jo["name"].ToString(),
+                    string.Join(", ", functions)
+                ]
             );
 
             if (functions.Count > 0)
@@ -366,7 +376,7 @@ internal partial class Program
                         Function = xSplit.Length > 2 ? xSplit[2] : xSplit[1]
                     };
 
-                    Console.WriteLine(new string(' ', 9) + "Processing function: " + x);
+                    ConstMessages.FETCH_TBL_PROP_FUNC_PROC.WriteLine(args: [new string(' ', 9), x]);
                     ExecAndSaveFunction(
                         pghelper: pghelper,
                         function: fm,
@@ -397,21 +407,21 @@ internal partial class Program
 
         if (result is null)
         {
-            Console.WriteLine(
-                $"{new string(' ', indentMessage)}[{function.Function}] : Function does not exist."
+            ConstMessages.FETCH_FUNC_NOT_EXIST.WriteLine(
+                args: [new string(' ', indentMessage), function.Function]
             );
             return;
         }
 
-        Console.WriteLine(
-            $"{new string(' ', indentMessage)}[{function.Function}] : Found {result.Count} function."
+        ConstMessages.FETCH_FUNC_PROC_FOUND_COUNT.WriteLine(
+            args: [new string(' ', indentMessage), function.Function, result.Count]
         );
 
         result.ForEach(x =>
         {
             dynamic jo = JObject.FromObject(x);
-            Console.WriteLine(
-                $"{new string(' ', indentMessage + 2)}[{jo["name"].ToString()}] : Processing function."
+            ConstMessages.FETCH_FUNC_PROC_START.WriteLine(
+                args: [new string(' ', indentMessage), jo["name"].ToString()]
             );
 
             dynamic script = jo["script"].ToString();
@@ -439,8 +449,14 @@ internal partial class Program
                 return;
 
             List<string> functions = ExtractFunctions(script);
-            Console.WriteLine(
-                $"{new string(' ', indentMessage + 2)}Found {functions.Count} functions inside function \"{jo["name"].ToString()}\": [{string.Join(", ", functions)}]."
+            ConstMessages.FETCH_FUNC_INSIDE_FUNC_COUNT.WriteLine(
+                args:
+                [
+                    new string(' ', indentMessage + 2),
+                    functions.Count,
+                    jo["name"].ToString(),
+                    string.Join(", ", functions)
+                ]
             );
 
             if (functions.Count > 0)
@@ -450,8 +466,8 @@ internal partial class Program
                     string[] xSplit = x.Split('.');
                     if (xSplit.Length < 2)
                     {
-                        Console.WriteLine(
-                            $"{new string(' ', indentMessage + 4)}[Function] : Function name \"{x}\" will not be processed."
+                        ConstMessages.FETCH_FUNC_INSIDE_FUNC_SKIP.WriteLine(
+                            args: [new string(' ', indentMessage + 4), x]
                         );
                         return;
                     }
@@ -464,8 +480,8 @@ internal partial class Program
                         IterateInnerFunctions = function.IterateInnerFunctions
                     };
 
-                    Console.WriteLine(
-                        $"{new string(' ', indentMessage + 4)}Processing function: {x}"
+                    ConstMessages.FETCH_FUNC_INSIDE_FUNC_PROC.WriteLine(
+                        args: [new string(' ', indentMessage + 4), x]
                     );
                     ExecAndSaveFunction(
                         pghelper: pghelper,
@@ -511,29 +527,29 @@ internal partial class Program
 
         try
         {
-            Console.WriteLine("Please specify the location of the json configuration file:");
+            ConstMessages.SCR_PREP_ASK_PATH.WriteLine();
 
             string? userResponse = Console.ReadLine();
             if (string.IsNullOrWhiteSpace(userResponse))
-                throw new ArgumentException("Configuration file path can not be empty.");
+                throw new ArgumentException(ConstMessages.SCR_PREP_PATH_CANNOT_EMPTY);
 
             if (File.Exists(userResponse) == false)
-                throw new FileNotFoundException("The specified file does not exist.");
+                throw new FileNotFoundException(ConstMessages.SCR_PREP_FILE_NOT_FOUND);
 
-            Console.WriteLine("Reading configuration file...");
+            ConstMessages.SCR_PREP_READ_CFG_FILE.WriteLine();
             string configFileContent = File.ReadAllText(userResponse!);
             ConfigurationModel configJson =
                 JsonConvert.DeserializeObject<ConfigurationModel>(configFileContent)
-                ?? throw new DataException("The specified file could not be parsed.");
+                ?? throw new DataException(ConstMessages.SCR_PREP_READ_CFG_FAIL);
 
             return configJson;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error: {ex.Message}");
-            Console.WriteLine(
-                "Press <r> to try again or press any other key to go back to the main menu?"
+            ConstMessages.CMD_MSG_ERROR.WriteLine(
+                args: [ex.Message, ex.StackTrace ?? string.Empty]
             );
+            ConstMessages.CMD_MSG_RETRY_OR_MAIN_MENU.WriteLine();
             if (Console.ReadLine()?.ToLower() == "r")
                 goto restart_process;
             else
